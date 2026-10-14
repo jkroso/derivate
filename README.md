@@ -8,6 +8,21 @@ Derivate makes passwords as [Spectre](https://spectre.app) (formerly Master
 Password) does. The same name, secret and site give the same password in
 both apps, so you can use them side by side.
 
+## Install it
+
+Install Derivate with [Homebrew](https://brew.sh):
+
+```sh
+brew install --cask jkroso/tap/derivate
+```
+
+You can also download `Derivate-<version>.zip` from the
+[latest release](https://github.com/jkroso/derivate/releases/latest). Open
+it, and move Derivate.app to your Applications folder.
+
+Derivate needs macOS 14 or later. It runs on Macs with Apple silicon and on
+Macs with Intel.
+
 ## Use it
 
 1. Press **⌃⌘P** (Ctrl+Cmd+P) in any app, or click the key in the menu bar.
@@ -202,7 +217,13 @@ Derivate needs macOS 14 or later and Xcode 26 or later (Swift 6.2).
 scripts/build-app.sh             # build/Derivate.app
 scripts/build-app.sh --install   # builds it, quits the running copy, puts the new one in ~/Applications and opens it
 swift test                       # the algorithm, the export files and the app
+scripts/release.sh               # signs and notarises the app, and publishes it on GitHub and in the Homebrew tap
 ```
+
+Before you run `scripts/release.sh`, change `version` in
+`scripts/build-app.sh` and commit it. The comments at the top of
+`scripts/release.sh` list what the Mac needs: a Developer ID certificate,
+a notary profile and a logged-in `gh`.
 
 `swift test` checks every result in Spectre's published test vectors. To run
 the cases of Spectre's own test files as well, set `SPECTRE_TESTS` (see

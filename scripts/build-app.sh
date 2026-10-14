@@ -1,18 +1,24 @@
 #!/bin/sh
-# Builds build/Derivate.app: the release binary, its Info.plist and its
-# icon, signed for this Mac.
+# Builds build/Derivate.app: the release binary for Apple silicon and Intel,
+# its Info.plist and its icon, signed for this Mac.
 #
 #   scripts/build-app.sh              build/Derivate.app
 #   scripts/build-app.sh --install    builds it, quits the running copy, puts the
 #                                     new one in ~/Applications and opens it
+#
+# SIGN_IDENTITY names a certificate in the keychain, such as
+# "Developer ID Application". The app is then signed with it, with the
+# hardened runtime and a secure timestamp, as Apple's notary service asks.
+# scripts/release.sh sets it.
 set -eu
 cd "$(dirname "$0")/.."
 
 version=1.0.0
 app=build/Derivate.app
 
-swift build -c release --product Derivate
-bin=$(swift build -c release --show-bin-path)
+arch="--arch arm64 --arch x86_64"
+swift build -c release $arch --product Derivate
+bin=$(swift build -c release $arch --show-bin-path)
 
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
@@ -48,7 +54,12 @@ cat > "$app/Contents/Info.plist" <<EOF
 </plist>
 EOF
 
-codesign --force --sign - "$app"
+identity=${SIGN_IDENTITY:--}
+if [ "$identity" = - ]; then
+    codesign --force --sign - "$app"
+else
+    codesign --force --sign "$identity" --options runtime --timestamp "$app"
+fi
 echo "Built $app"
 
 if [ "${1:-}" = "--install" ]; then
