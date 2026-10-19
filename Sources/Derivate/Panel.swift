@@ -65,6 +65,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var panel: Panel?
     private var keys: Any?
     private var closedAt = Date.distantPast
+    /// Waits for the user to let go of the mouse, after a click elsewhere.
+    private var release: Task<Void, Never>?
 
     init(model: AppModel) {
         self.model = model
@@ -112,6 +114,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func close() {
+        release?.cancel()
+        release = nil
         guard let panel else { return }
         self.panel = nil
         panel.delegate = nil
@@ -125,8 +129,30 @@ final class PanelController: NSObject, NSWindowDelegate {
         model.panelClosed()
     }
 
+    /// A click elsewhere closes the panel. But dragging a file to the
+    /// panel starts with a click on the file, so while the mouse is down,
+    /// the panel waits: let go over it, and it takes the keyboard back.
     func windowDidResignKey(_ notification: Notification) {
-        close()
+        guard NSEvent.pressedMouseButtons & 1 != 0 else {
+            close()
+            return
+        }
+        guard release == nil else { return }
+        release = Task { [weak self] in
+            while NSEvent.pressedMouseButtons & 1 != 0, !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            guard let self, !Task.isCancelled, let panel else { return }
+            release = nil
+            if panel.isKeyWindow {
+                return
+            }
+            if panel.frame.contains(NSEvent.mouseLocation) {
+                panel.makeKeyAndOrderFront(nil)
+            } else {
+                close()
+            }
+        }
     }
 
     private func origin(below anchor: NSRect?) -> NSPoint {
