@@ -27,7 +27,16 @@ struct SecretView: View {
                                 .font(.secret(14))
                                 .focused($focus, equals: .password)
                                 .inputStyle(focused: focus == .password)
-                                .onChange(of: password) { model.updateSecret(secret.name) { $0.password = password } }
+                                .onChange(of: password) {
+                                    // A password is one line. A line break pasted with it
+                                    // would push it out of the field, and be copied with it.
+                                    let line = password.filter { !$0.isNewline }
+                                    if line != password {
+                                        password = line
+                                    } else {
+                                        model.updateSecret(secret.name) { $0.password = password }
+                                    }
+                                }
                         }
                         FieldRow(label: "Notes") {
                             TextEditor(text: $notes)

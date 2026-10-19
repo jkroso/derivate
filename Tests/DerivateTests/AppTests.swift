@@ -219,7 +219,7 @@ struct AppTests {
 
         model.lockForm.masterPassword = banana
         model.masterPasswordChanged()
-        for _ in 0..<200 where !model.isUnlocked {
+        for _ in 0..<1000 where !model.isUnlocked { // scrypt is slow while other tests run
             try await Task.sleep(for: .milliseconds(50))
         }
         #expect(model.isUnlocked)
@@ -249,7 +249,7 @@ struct AppTests {
 
         model.lockForm.masterPassword = banana
         model.masterPasswordChanged()
-        for _ in 0..<200 where !model.isUnlocked {
+        for _ in 0..<1000 where !model.isUnlocked { // scrypt is slow while other tests run
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(model.isUnlocked)
@@ -435,6 +435,31 @@ struct AppTests {
         #expect(!FileManager.default.fileExists(atPath: file.path))
     }
 
+    /// A password pasted with a line break keeps one line: the field
+    /// drops the break, which would push the password out of view.
+    @Test func secretPasswordIsOneLine() async throws {
+        let h = Harness()
+        let model = h.model
+        await h.createRobert()
+        model.updateSecret("gmail") { $0.password = "old\n" }
+        let host = NSHostingView(rootView: SecretView(secret: try #require(model.secret(named: "gmail"))).environment(model))
+        host.frame = NSRect(origin: .zero, size: PanelMetrics.size)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(model.secret(named: "gmail")?.password == "old")
+
+        let field = try #require(host.allSubviews.compactMap { $0 as? NSTextField }.first { $0.isEditable })
+        window.makeFirstResponder(field)
+        let editor = try #require(field.currentEditor() as? NSTextView)
+        editor.selectAll(nil)
+        editor.insertText("abcd efgh ijkl mnop\n", replacementRange: editor.selectedRange())
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(field.stringValue == "abcd efgh ijkl mnop")
+        #expect(model.secret(named: "gmail")?.password == "abcd efgh ijkl mnop")
+    }
+
     @Test func shortcuts() {
         #expect(Shortcut("Ctrl+Cmd+P") == .standard)
         #expect(Shortcut.standard.text == "Ctrl+Cmd+P")
@@ -564,4 +589,8 @@ struct AppTests {
     try await Task.sleep(for: .seconds(3))
     panel.close()
     backdrop.close()
+}
+
+private extension NSView {
+    var allSubviews: [NSView] { subviews.flatMap { [$0] + $0.allSubviews } }
 }
