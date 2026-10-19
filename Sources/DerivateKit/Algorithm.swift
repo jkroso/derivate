@@ -52,8 +52,8 @@ public enum SpectreError: Error, Equatable, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .wrongSecret: "The secret does not match this user's key."
-        case .missingNameOrSecret: "A name and a secret are needed."
+        case .wrongSecret: "The master password does not match this user's key."
+        case .missingNameOrSecret: "A name and a master password are needed."
         case .noStoredPassword: "The site has no stored password."
         case .unsupportedType(let type): "This app does not support result type \(type)."
         case .undecryptable: "The stored password does not decrypt with this key."

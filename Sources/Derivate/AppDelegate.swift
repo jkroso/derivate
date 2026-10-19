@@ -2,7 +2,7 @@ import AppKit
 import DerivateKit
 import ServiceManagement
 
-/// Derivate makes your passwords from your name and secret, in the menu
+/// Derivate makes your passwords from your name and master password, in the menu
 /// bar. Its icon, or its shortcut from any app (⌃⌘P at first), opens a
 /// panel where typing a site's name finds its password, and Enter copies
 /// it. It makes them as Spectre does, so they are the same in both apps.

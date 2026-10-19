@@ -44,7 +44,7 @@ private final class Harness {
 
     func createRobert() async {
         model.lockForm.name = robert
-        model.lockForm.secret = banana
+        model.lockForm.masterPassword = banana
         model.lockForm.confirm = banana
         model.unlock()
         await settle()
@@ -59,10 +59,10 @@ struct AppTests {
         #expect(model.lockForm.isCreating)
 
         model.lockForm.name = robert
-        model.lockForm.secret = banana
+        model.lockForm.masterPassword = banana
         model.lockForm.confirm = "banana colored ducklin"
         model.unlock()
-        #expect(model.lockForm.error == "The two secrets are different. Type them again.")
+        #expect(model.lockForm.error == "The two master passwords are different. Type them again.")
 
         await h.createRobert()
         #expect(model.isUnlocked)
@@ -124,11 +124,11 @@ struct AppTests {
         // Only the user locks it. A wrong secret does not unlock.
         h.press(kVK_ANSI_L, .command)
         #expect(!model.isUnlocked)
-        model.lockForm.secret = "wrong secret"
+        model.lockForm.masterPassword = "wrong secret"
         model.unlock()
         await h.settle()
-        #expect(model.lockForm.error == "That is not the secret of \(robert).")
-        model.lockForm.secret = banana
+        #expect(model.lockForm.error == "That is not the master password of \(robert).")
+        model.lockForm.masterPassword = banana
         model.unlock()
         await h.settle()
         #expect(model.isUnlocked)
@@ -157,13 +157,13 @@ struct AppTests {
         let model = h.model
         model.importFile(at: file)
         #expect(model.lockForm.pending?.sites.count == 2)
-        model.lockForm.secret = "not the secret"
+        model.lockForm.masterPassword = "not the secret"
         model.unlock()
         await h.settle()
-        #expect(model.lockForm.error == "That is not the secret of \(robert).")
+        #expect(model.lockForm.error == "That is not the master password of \(robert).")
         #expect(model.users.isEmpty)
 
-        model.lockForm.secret = banana
+        model.lockForm.masterPassword = banana
         model.unlock()
         await h.settle()
         #expect(model.user?.sites.count == 2)
@@ -192,7 +192,7 @@ struct AppTests {
         panel.focusTopTextField()
         #expect(focused() is NSSecureTextField)
 
-        h.model.lockForm.secret = banana
+        h.model.lockForm.masterPassword = banana
         h.model.unlock()
         await h.settle()
         panel.focusTopTextField()
@@ -209,27 +209,27 @@ struct AppTests {
         await h.createRobert()
         model.lock()
 
-        model.lockForm.secret = String(banana.dropLast())
-        model.secretChanged()
+        model.lockForm.masterPassword = String(banana.dropLast())
+        model.masterPasswordChanged()
         try await Task.sleep(for: .seconds(4)) // scrypt is slow in debug builds
         #expect(!model.isUnlocked)
         #expect(model.lockForm.error == nil)
-        #expect(model.lockForm.secret == String(banana.dropLast()))
+        #expect(model.lockForm.masterPassword == String(banana.dropLast()))
 
-        model.lockForm.secret = banana
-        model.secretChanged()
+        model.lockForm.masterPassword = banana
+        model.masterPasswordChanged()
         for _ in 0..<200 where !model.isUnlocked {
             try await Task.sleep(for: .milliseconds(50))
         }
         #expect(model.isUnlocked)
-        #expect(model.lockForm.secret.isEmpty)
+        #expect(model.lockForm.masterPassword.isEmpty)
 
         // A new user waits for Enter: nothing checks their secret.
         model.lock()
         model.lockForm.who = LockForm.newUser
         model.lockForm.name = "Someone New"
-        model.lockForm.secret = banana
-        model.secretChanged()
+        model.lockForm.masterPassword = banana
+        model.masterPasswordChanged()
         try await Task.sleep(for: .seconds(1))
         #expect(!model.isUnlocked)
         #expect(model.users.count == 1)
@@ -249,7 +249,7 @@ struct AppTests {
         #expect(panel.frame.height < 360)
         #expect(panel.frame.maxY == top)
 
-        h.model.lockForm.secret = banana
+        h.model.lockForm.masterPassword = banana
         h.model.unlock()
         await h.settle()
         panel.contentView?.layoutSubtreeIfNeeded()
@@ -290,6 +290,122 @@ struct AppTests {
         for _ in 0..<5 { h.press(kVK_DownArrow) }
         #expect(model.chosen?.name == "tra")
         #expect(model.isDraft(try #require(model.chosen)))
+    }
+
+    /// Secrets have their own screen: files and passwords that Derivate
+    /// keeps encrypted with the user's key.
+    @Test func secrets() async throws {
+        let h = Harness()
+        let model = h.model
+        await h.createRobert()
+        #expect(h.press(kVK_ANSI_S, .command))
+        #expect(model.screen == .secrets)
+        #expect(model.secretResults.isEmpty)
+
+        // A name typed is a new secret, which Enter opens. Derivate keeps
+        // it only once it holds something.
+        model.query = "Developer ID"
+        h.press(kVK_Return)
+        #expect(model.screen == .secret(name: "Developer ID"))
+        h.press(kVK_Escape)
+        #expect(model.screen == .secrets)
+        #expect(model.secrets.isEmpty)
+
+        // A file chosen for it, and its password.
+        try FileManager.default.createDirectory(at: h.folder, withIntermediateDirectories: true)
+        let certificate = Data((0..<3000).map { UInt8($0 % 251) })
+        let original = h.folder.appending(path: "Developer ID Application.p12")
+        try certificate.write(to: original)
+        model.openDialog = { original }
+        h.press(kVK_Return)
+        model.chooseFile(for: "Developer ID")
+        #expect(model.screen == .secret(name: "Developer ID"))
+        #expect(model.secret(named: "Developer ID")?.file == certificate)
+        #expect(model.secret(named: "Developer ID")?.fileName == "Developer ID Application.p12")
+        model.updateSecret("Developer ID") { $0.password = "p12 password" }
+
+        // Their file holds neither in the clear, and only the user reads it.
+        let file = h.folder.appending(path: "secrets/\(robert).secrets")
+        let stored = try Data(contentsOf: file)
+        #expect(stored.starts(with: Data("Derivate secrets 1\n".utf8)))
+        #expect(stored.range(of: Data("p12 password".utf8)) == nil)
+        #expect(stored.range(of: certificate.prefix(32)) == nil)
+        #expect(stored.range(of: Data("Developer ID".utf8)) == nil)
+        let permissions = try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? Int
+        #expect(permissions == 0o600)
+
+        // Enter saves the file, Shift+Enter copies its password.
+        model.back()
+        #expect(model.screen == .secrets)
+        model.query = "dev"
+        let saved = h.folder.appending(path: "saved.p12")
+        var suggested: String?
+        model.saveDialog = { name in
+            suggested = name
+            return saved
+        }
+        h.press(kVK_Return)
+        #expect(suggested == "Developer ID Application.p12")
+        #expect(try Data(contentsOf: saved) == certificate)
+        h.press(kVK_Return, .shift)
+        #expect(h.copied.last == "p12 password")
+
+        // A file dropped on the secrets is a new secret, named as the file.
+        let apiKey = h.folder.appending(path: "AuthKey_ABC123.p8")
+        try Data("-----BEGIN PRIVATE KEY-----".utf8).write(to: apiKey)
+        model.dropped(apiKey)
+        #expect(model.screen == .secret(name: "AuthKey_ABC123"))
+        model.back()
+        model.dropped(apiKey)
+        #expect(model.screen == .secret(name: "AuthKey_ABC123 2"))
+        model.deleteSecret("AuthKey_ABC123 2")
+        #expect(model.screen == .secrets)
+        model.dropped(h.folder)
+        #expect(model.toast?.hasSuffix("is a folder. Derivate keeps files only.") == true)
+
+        // Enter copies the password of a secret without a file.
+        model.query = "npm token"
+        h.press(kVK_Return, .command)
+        model.updateSecret("npm token") { $0.password = "npm_abc" }
+        model.back()
+        model.query = "npm"
+        h.press(kVK_Return)
+        #expect(h.copied.last == "npm_abc")
+
+        // Escape clears the search, then goes back to the sites.
+        h.press(kVK_Escape)
+        #expect(model.query.isEmpty)
+        h.press(kVK_Escape)
+        #expect(model.screen == .sites)
+
+        // Locking forgets them, and unlocking reads them again.
+        model.lock()
+        #expect(model.secrets.isEmpty)
+        model.lockForm.masterPassword = banana
+        model.unlock()
+        await h.settle()
+        #expect(model.secrets.map(\.name).sorted() == ["AuthKey_ABC123", "Developer ID", "npm token"])
+        #expect(model.secret(named: "developer id")?.file == certificate)
+
+        // A file that does not decrypt stays as it was.
+        var broken = stored
+        broken[broken.count - 1] ^= 1
+        try broken.write(to: file)
+        model.lock()
+        model.lockForm.masterPassword = banana
+        model.unlock()
+        await h.settle()
+        #expect(model.secrets.isEmpty)
+        #expect(model.secretsError?.hasPrefix("Derivate could not read your secrets") == true)
+        model.showSecrets()
+        #expect(model.secretDraft == nil)
+        let changed = model.updateSecret("new") { $0.password = "x" }
+        #expect(!changed)
+        #expect(try Data(contentsOf: file) == broken)
+
+        // Forgetting the user deletes their secrets.
+        model.forget(robert)
+        #expect(!FileManager.default.fileExists(atPath: file.path))
     }
 
     @Test func shortcuts() {
@@ -342,6 +458,23 @@ struct AppTests {
             try shot("site")
             model.screen = .settings
             try shot("settings")
+            model.updateSecret("Developer ID Application") {
+                $0.fileName = "Developer ID Application.p12"
+                $0.file = Data(count: 3_213)
+                $0.password = "correct horse battery"
+            }
+            model.updateSecret("App Store Connect API") {
+                $0.fileName = "AuthKey_ABC123.p8"
+                $0.file = Data(count: 257)
+            }
+            model.updateSecret("npm token") { $0.password = "npm_3f9Kq2Lr8XvTb1" }
+            model.updateSecret("Recovery codes") { $0.notes = "GitHub: 1a2b-3c4d" }
+            model.showSecrets()
+            try shot("secrets")
+            model.query = "dev"
+            try shot("secrets-search")
+            h.press(kVK_ANSI_E, .command)
+            try shot("secret")
             model.lock()
             try shot("lock")
         }

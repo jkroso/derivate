@@ -93,7 +93,7 @@ cask "derivate" do
 
   url "https://github.com/$repo/releases/download/v#{version}/Derivate-#{version}.zip"
   name "Derivate"
-  desc "Menu bar app that makes your passwords from your name and secret"
+  desc "Menu bar app that makes your passwords from your name and master password"
   homepage "https://github.com/$repo"
 
   livecheck do

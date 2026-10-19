@@ -1,12 +1,13 @@
 # Derivate
 
 A menu bar app that makes your passwords from your full name and your
-secret, written in Swift with SwiftUI and AppKit. A shortcut opens it from
+master password, written in Swift with SwiftUI and AppKit. A shortcut opens it from
 any app. You type a site's name, and Enter copies its password.
 
 Derivate makes passwords as [Spectre](https://spectre.app) (formerly Master
-Password) does. The same name, secret and site give the same password in
-both apps, so you can use them side by side.
+Password) does. The same name, master password and site give the same
+password in both apps, so you can use them side by side. Spectre calls the
+master password your secret.
 
 ## Install it
 
@@ -26,8 +27,8 @@ Macs with Intel.
 ## Use it
 
 1. Press **⌃⌘P** (Ctrl+Cmd+P) in any app, or click the key in the menu bar.
-2. Type your secret. Derivate unlocks as soon as it is right, without
-   Enter.
+2. Type your master password. Derivate unlocks as soon as it is right,
+   without Enter.
 3. Type part of a site's name. Use ↑ and ↓ to choose a site. The panel
    shows its password, and the login name you set for it, if any.
 4. Press Enter. Derivate copies the password and closes. Paste it with ⌘V.
@@ -38,6 +39,7 @@ Macs with Intel.
 | Shift+Enter | Copies the login name you set for the chosen site |
 | ⌘Enter | Saves the name you typed as a new site and copies its password, even when other sites match |
 | ⌘E | Opens the site's details: type, password number, login name, website, security answers |
+| ⌘S | Opens your [secrets](#secrets): files and passwords that Derivate keeps for you |
 | ⌘L | Locks Derivate |
 | ⌘, | Opens the settings |
 | Esc | Clears the search, then closes the panel |
@@ -68,14 +70,60 @@ Derivate never locks by itself. It forgets your key only when:
 The panel shows the chosen site's password. Press ⌘L before you share your
 screen.
 
+## Secrets
+
+Derivate also keeps files and passwords that it cannot make. An example
+is a Developer ID certificate that you exported as a `.p12` file, with
+the password of that file. Spectre has no place for these, so Spectre
+exports do not hold them.
+
+### Add a secret
+
+1. Press **⌘S** in the panel, or click the document icon at the bottom.
+   The Secrets screen opens.
+2. Drop the file on the panel. Derivate adds a secret with the name of the
+   file, and opens it. You can also type a name, press Enter, and click
+   **Choose File…**.
+3. Type the password of the file in **Password**. Type anything else to
+   keep with it in **Notes**.
+
+Derivate keeps an encrypted copy of the file. You can delete the
+original. A secret can also hold only a password, or only notes.
+
+### Use a secret
+
+| Key | What it does |
+|---|---|
+| Enter | Saves the file of the chosen secret where you choose. If it has no file, Enter copies its password. |
+| Shift+Enter | Copies the password of the chosen secret |
+| ⌘Enter | Opens a new secret with the name you typed, even when other secrets match |
+| ⌘E | Opens the details of the secret |
+| Esc | Clears the search, then goes back to your sites |
+| ⌘S | Goes back to your sites |
+
+Derivate saves the file decrypted. Only your Mac user can read the copy.
+To put a certificate back in your keychain, save it, then double-click it
+and type its password.
+
+A secret holds one file, of up to 5 MB. AI agents cannot get secrets.
+
+### Keep a copy of your secrets
+
+Derivate cannot make your secrets again from your name and master
+password, as it makes your passwords. Back up the folder
+`~/Library/Application Support/Derivate/secrets`, for example with Time
+Machine. **Export for Spectre** does not include secrets. When you forget
+a user in the settings, Derivate deletes their secrets too.
+
 ## Import your sites from Spectre
 
 1. In Spectre, export your user. Choose the "Secure" export, which keeps
    stored passwords encrypted.
 2. In Derivate, right-click the menu bar icon and choose **Import Spectre
    Export…**. You can also drop the file on the panel.
-3. Type the secret you use in Spectre. Derivate checks it against the
-   key ID in the export. If the secret is wrong, Derivate imports nothing.
+3. Type the master password you use in Spectre. Derivate checks it
+   against the key ID in the export. If the master password is wrong,
+   Derivate imports nothing.
 
 Derivate reads these files:
 
@@ -190,9 +238,14 @@ the running app holds your key.
 
 ## Security
 
-- Derivate keeps no secret or key on disk. Each user's file holds the same
+- Derivate never writes your master password or your key to disk. Each user's file holds the same
   data as a Spectre export: site names, counters, types, and stored passwords
   encrypted with your key.
+- Each user's secrets are in one file, encrypted with AES-256-GCM. Derivate
+  derives the key of that file from your key with HKDF-SHA256, so only your
+  name and master password open it. The names of your secrets are encrypted too. If
+  someone changes the file, it does not decrypt. Derivate then shows a
+  message and does not change the file.
 - Derivate marks a copied password as concealed
   (`org.nspasteboard.ConcealedType`). Clipboard managers such as Paste then
   do not keep it. Derivate clears the clipboard after a minute, but only if
@@ -203,6 +256,7 @@ the running app holds your key.
 Derivate keeps its data in `~/Library/Application Support/Derivate`:
 
 - `users/<full name>.mpjson`: each user's sites
+- `secrets/<full name>.secrets`: each user's secrets, encrypted
 - `settings.json`: the shortcut, the clipboard time, the last user, and the
   settings and key for AI agents
 
@@ -235,12 +289,13 @@ draws the screens for agents.
 
 | Folder or file | What it holds |
 |---|---|
-| `Sources/DerivateKit` | Spectre's algorithm, versions 0 to 3, and its export formats. It has no UI. |
+| `Sources/DerivateKit` | Spectre's algorithm, versions 0 to 3, its export formats, and the encryption of secrets. It has no UI. |
 | `Sources/Derivate/AppDelegate.swift` | The menu bar icon, its menu and the shortcut |
 | `Sources/Derivate/Panel.swift` | The floating panel and its blurred background |
 | `Sources/Derivate/AppModel.swift`, `Keys.swift` | The app's state: unlocking, the search, copying, import and export, the panel's keys |
-| `Sources/Derivate/*View.swift` | The screens: lock, sites, a site's details, settings |
-| `Sources/Derivate/Store.swift` | The users' files and `settings.json` |
+| `Sources/Derivate/*View.swift` | The screens: lock, sites, a site's details, secrets, a secret's details, settings |
+| `Sources/Derivate/Secrets.swift` | The secrets: the search, adding files, saving them and copying passwords |
+| `Sources/Derivate/Store.swift` | The users' files, their secrets files and `settings.json` |
 | `Sources/Derivate/Clipboard.swift` | Copies a password to the clipboard with the concealed type |
 | `Sources/Derivate/Shortcut.swift` | The global shortcut |
 | `Sources/Derivate/AgentServer.swift` | The HTTP server for agents, its key, and its checks of each request |

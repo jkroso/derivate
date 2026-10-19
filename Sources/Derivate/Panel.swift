@@ -41,7 +41,7 @@ final class Panel: NSPanel {
     }
 
     /// Puts the keyboard in the topmost text field, so that typing goes
-    /// there as the panel opens: the search, or the secret.
+    /// there as the panel opens: the search, or the master password.
     func focusTopTextField() {
         guard let content = contentView else { return }
         content.layoutSubtreeIfNeeded()

@@ -30,7 +30,7 @@ private final class AgentHarness {
         model.closePanel = { [unowned self] in closed += 1; model.panelClosed() }
         model.settings.agents = access
         model.lockForm.name = robert
-        model.lockForm.secret = banana
+        model.lockForm.masterPassword = banana
         model.lockForm.confirm = banana
         model.unlock()
         try await until { self.model.isUnlocked }
@@ -248,7 +248,7 @@ struct AgentTests {
 
         // Locking forgets the sessions the user allowed.
         h.model.lock()
-        h.model.lockForm.secret = banana
+        h.model.lockForm.masterPassword = banana
         h.model.unlock()
         try await until { h.model.isUnlocked }
         let again = Task { try await h.call("get_password", ["site": "github.com"]) }
@@ -268,7 +268,7 @@ struct AgentTests {
         let call = Task { try await h.call("get_password", ["site": "github.com"]) }
         try await until { !h.model.agentRequests.isEmpty }
         #expect(h.shown == 1) // the panel opens on the lock screen
-        h.model.lockForm.secret = banana
+        h.model.lockForm.masterPassword = banana
         h.model.unlock()
         let answer = try await call.value
         #expect(!answer.isError)
@@ -462,7 +462,7 @@ private final class Lines: Sendable {
         model.panelClosed()
         _ = await locked.value
 
-        model.lockForm.secret = banana
+        model.lockForm.masterPassword = banana
         model.unlock()
         try await until { model.isUnlocked }
         model.screen = .settings

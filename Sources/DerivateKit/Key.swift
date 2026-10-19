@@ -54,7 +54,7 @@ public final class Key: @unchecked Sendable {
         for i in byBytes.indices { byBytes[i] = 0 }
     }
 
-    private func key(for algorithm: Algorithm) -> [UInt8] {
+    func key(for algorithm: Algorithm) -> [UInt8] {
         algorithm < .v3 ? byCharacters : byBytes
     }
 

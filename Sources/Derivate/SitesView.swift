@@ -27,7 +27,7 @@ struct SitesView: View {
             if let site = model.chosen {
                 SiteCard(site: site)
             }
-            footer
+            Footer()
         }
         .onAppear { searching = true }
         .onChange(of: model.opened) { searching = true }
@@ -69,7 +69,14 @@ struct SitesView: View {
         }
     }
 
-    private var footer: some View {
+}
+
+/// The foot of the sites and the secrets: the user, and buttons to the
+/// other list, the settings and the lock.
+struct Footer: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "person")
                 .foregroundStyle(.secondary)
@@ -77,6 +84,11 @@ struct SitesView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Spacer()
+            if model.screen == .secrets {
+                IconButton("globe", help: "Sites  ⌘S") { model.showSecrets(false) }
+            } else {
+                IconButton("lock.doc", help: "Secrets  ⌘S") { model.showSecrets() }
+            }
             IconButton("slider.horizontal.3", help: "Settings  ⌘,") { model.screen = .settings }
             IconButton("lock", help: "Lock  ⌘L", action: model.lock)
         }

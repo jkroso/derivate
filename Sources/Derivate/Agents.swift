@@ -24,7 +24,7 @@ enum AgentAccess: String, CaseIterable, Codable, Sendable {
         case .off: "Agents cannot connect to Derivate."
         case .ask: "Derivate asks you before it gives an agent a password or adds a site for it."
         case .askOnce: "Derivate asks once for each agent session. After you allow it, that session gets passwords without asking until you lock Derivate."
-        case .allow: "An agent with the key gets any password while Derivate is unlocked. When it is locked, Derivate asks for your secret."
+        case .allow: "An agent with the key gets any password while Derivate is unlocked. When it is locked, Derivate asks for your master password."
         }
     }
 }
@@ -107,7 +107,7 @@ extension AppModel {
         [
             "name": "create_site",
             "title": "Add a site",
-            "description": "Adds a site to Derivate and gives its password. Without `password`, Derivate makes the password from the user's secret, as Spectre does. With `password`, Derivate keeps that password, encrypted. It fails if the site exists: use get_password then. Derivate can ask the user first, so the call can wait up to 2 minutes.",
+            "description": "Adds a site to Derivate and gives its password. Without `password`, Derivate makes the password from the user's master password, as Spectre does. With `password`, Derivate keeps that password, encrypted. It fails if the site exists: use get_password then. Derivate can ask the user first, so the call can wait up to 2 minutes.",
             "inputSchema": [
                 "type": "object",
                 "properties": [
@@ -181,7 +181,7 @@ extension AppModel {
     /// so this works when Derivate is locked too, and never asks.
     private func findSites(matching query: String) -> ToolResult {
         guard let user = exportUser else {
-            return .failure("Derivate has no user yet. Ask the user to open Derivate and type their name and secret.")
+            return .failure("Derivate has no user yet. Ask the user to open Derivate and type their name and master password.")
         }
         let found = sites(matching: query, of: user)
         guard !found.isEmpty else {

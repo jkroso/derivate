@@ -23,9 +23,14 @@ extension AppModel {
         }
     }
 
-    /// Goes back to the sites, with the keyboard in the search field.
+    /// Goes back to the sites, or from a secret to the secrets, with the
+    /// keyboard in the search field.
     func back() {
-        screen = .sites
+        if case .secret = screen {
+            screen = .secrets
+        } else {
+            screen = .sites
+        }
         opened += 1
         focusTopField()
     }
@@ -36,9 +41,13 @@ extension AppModel {
     ///     the login name the user set for it.
     ///   - ⌘Enter saves the name typed as a new site and copies its
     ///     password, even when other sites match it.
-    ///   - ⌘E opens its details, ⌘L locks, ⌘, opens the settings.
+    ///   - ⌘E opens its details, ⌘S the secrets, ⌘L locks, ⌘, opens the
+    ///     settings.
     ///   - Escape clears the search, then closes the panel. On the other
     ///     screens, it goes back to the sites.
+    ///   - On the secrets, Enter saves the chosen secret's file, else
+    ///     copies its password. Shift+Enter copies its password. Escape
+    ///     and ⌘S go back to the sites.
     ///   - While an agent's request shows, Enter allows it, and Escape
     ///     and ⌘L refuse it. ⌘L also locks.
     func handleKey(_ event: NSEvent) -> Bool {
@@ -61,6 +70,9 @@ extension AppModel {
         if recording {
             record(event)
             return true
+        }
+        if screen == .secrets, isUnlocked {
+            return handleSecretsKey(key, modifiers, enter: enter)
         }
         if screen != .sites {
             guard key == kVK_Escape, modifiers.isEmpty else { return false }
@@ -95,6 +107,41 @@ extension AppModel {
             }
         case (kVK_ANSI_E, .command), (kVK_ANSI_I, .command):
             if let chosen { edit(chosen) }
+        case (kVK_ANSI_S, .command):
+            showSecrets()
+        case (kVK_ANSI_L, .command):
+            lock()
+        case (kVK_ANSI_Comma, .command):
+            screen = .settings
+        default:
+            return false
+        }
+        return true
+    }
+
+    private func handleSecretsKey(_ key: Int, _ modifiers: NSEvent.ModifierFlags, enter: Bool) -> Bool {
+        switch (key, modifiers) {
+        case (kVK_DownArrow, []):
+            selection = min(selection + 1, max(secretChoices - 1, 0))
+        case (kVK_UpArrow, []):
+            selection = max(selection - 1, 0)
+        case (_, []) where enter:
+            if let chosenSecret { use(chosenSecret) }
+        case (_, .shift) where enter:
+            if let chosenSecret { copyPassword(of: chosenSecret) }
+        case (_, .command) where enter:
+            if let secretDraft { use(secretDraft) }
+        case (kVK_Escape, []):
+            if query.isEmpty {
+                showSecrets(false)
+            } else {
+                query = ""
+                selection = 0
+            }
+        case (kVK_ANSI_E, .command), (kVK_ANSI_I, .command):
+            if let chosenSecret { screen = .secret(name: chosenSecret.name) }
+        case (kVK_ANSI_S, .command):
+            showSecrets(false)
         case (kVK_ANSI_L, .command):
             lock()
         case (kVK_ANSI_Comma, .command):

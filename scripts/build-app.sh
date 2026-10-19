@@ -49,7 +49,7 @@ cat > "$app/Contents/Info.plist" <<EOF
     <key>CFBundleVersion</key><string>$version</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSUIElement</key><true/>
-    <key>NSHumanReadableCopyright</key><string>Your passwords from your name and secret, in the menu bar</string>
+    <key>NSHumanReadableCopyright</key><string>Your passwords from your name and master password, in the menu bar</string>
 </dict>
 </plist>
 EOF

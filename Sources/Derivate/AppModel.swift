@@ -7,6 +7,8 @@ import UniformTypeIdentifiers
 enum Screen: Equatable {
     case sites
     case site(name: String)
+    case secrets
+    case secret(name: String)
     case settings
 }
 
@@ -16,12 +18,12 @@ struct LockForm {
 
     var who = LockForm.newUser // the user chosen, by name, or newUser
     var name = ""              // a new user's full name
-    var secret = ""
-    var confirm = ""           // a new user's secret, again
+    var masterPassword = ""
+    var confirm = ""           // a new user's master password, again
     var busy = false           // scrypt runs
     var error: String?
 
-    /// A Spectre export waiting for its user's secret, and the name of its
+    /// A Spectre export waiting for its user's master password, and the name of its
     /// file.
     var pending: User?
     var pendingFile = ""
@@ -37,6 +39,11 @@ final class AppModel {
     /// The user unlocked, with their changes.
     var user: User?
     private(set) var key: Key?
+    /// The unlocked user's secrets, decrypted.
+    var secrets: [Secret] = []
+    /// Why the user's secrets do not read: Derivate then leaves their file
+    /// as it is.
+    var secretsError: String?
 
     var screen = Screen.sites
     var query = ""
@@ -71,6 +78,10 @@ final class AppModel {
     @ObservationIgnored var didCopy: () -> Void = {}
     /// Writes the clipboard in place of Clipboard, for tests.
     @ObservationIgnored var clipboard: ((String) -> Void)?
+    /// Choose a file to open, and where to save one, in place of the
+    /// dialogs, for tests.
+    @ObservationIgnored var openDialog: (() -> URL?)?
+    @ObservationIgnored var saveDialog: ((_ name: String) -> URL?)?
     /// Registers the shortcut with the system, and reports why it failed.
     @ObservationIgnored var registerShortcut: (Shortcut?) -> String? = { _ in nil }
     /// Starts, changes or stops the server for agents, as the settings say.
@@ -130,11 +141,13 @@ final class AppModel {
         }
     }
 
-    /// Forgets the key: the panel asks for the secret again.
+    /// Forgets the key: the panel asks for the master password again.
     func lock() {
         key?.wipe()
         key = nil
         user = nil
+        secrets = []
+        secretsError = nil
         allowedAgents = []
         answerAll(.locked)
         screen = .sites
@@ -145,7 +158,7 @@ final class AppModel {
     }
 
     /// Derives the key of the user the form names, off the main thread,
-    /// and opens their sites if the secret is theirs.
+    /// and opens their sites if the master password is theirs.
     func unlock() {
         var form = lockForm
         guard !form.busy else { return }
@@ -164,9 +177,9 @@ final class AppModel {
             if let existing = users.first(where: { $0.name == name }) {
                 target = existing
             } else {
-                guard form.secret == form.confirm else {
-                    lockForm.error = "The two secrets are different. Type them again."
-                    lockForm.secret = ""
+                guard form.masterPassword == form.confirm else {
+                    lockForm.error = "The two master passwords are different. Type them again."
+                    lockForm.masterPassword = ""
                     lockForm.confirm = ""
                     return
                 }
@@ -174,16 +187,16 @@ final class AppModel {
                 creating = true
             }
         }
-        guard !form.secret.isEmpty else {
-            lockForm.error = "Type your secret."
+        guard !form.masterPassword.isEmpty else {
+            lockForm.error = "Type your master password."
             return
         }
         form.busy = true
         form.error = nil
         lockForm = form
-        let secret = form.secret, name = target.name
+        let masterPassword = form.masterPassword, name = target.name
         Task {
-            let result = await Self.derive(target, secret: secret)
+            let result = await Self.derive(target, masterPassword: masterPassword)
             // The form changed meanwhile: an import came, or it was reset.
             guard lockForm.busy, lockForm.pending?.name == form.pending?.name else {
                 if case .success(let (_, key)) = result { key.wipe() }
@@ -194,33 +207,33 @@ final class AppModel {
             case .success(let (user, key)):
                 unlocked(user, key: key, creating: creating)
             case .failure(let error as SpectreError) where error == .wrongSecret:
-                lockForm.error = "That is not the secret of \(name)."
-                lockForm.secret = ""
+                lockForm.error = "That is not the master password of \(name)."
+                lockForm.masterPassword = ""
             case .failure(let error):
                 lockForm.error = error.localizedDescription
-                lockForm.secret = ""
+                lockForm.masterPassword = ""
             }
         }
     }
 
-    /// Unlocks as soon as the secret typed is the user's, without Enter: a
-    /// pause in the typing checks it against the user's key ID. A secret
-    /// that is not theirs, or not yet, shows nothing. A new user, and an
-    /// export without a key ID, wait for Enter: nothing checks their
-    /// secret.
-    func secretChanged() {
+    /// Unlocks as soon as the master password typed is the user's, without
+    /// Enter: a pause in the typing checks it against the user's key ID. A
+    /// master password that is not theirs, or not yet, shows nothing. A new
+    /// user, and an export without a key ID, wait for Enter: nothing checks
+    /// their master password.
+    func masterPasswordChanged() {
         quietUnlock?.cancel()
         let form = lockForm
-        guard !form.busy, !form.secret.isEmpty, !isUnlocked else { return }
+        guard !form.busy, !form.masterPassword.isEmpty, !isUnlocked else { return }
         let target = form.pending ?? (form.isCreating ? nil : users.first { $0.name == form.who })
         guard let target, target.keyID != nil else { return }
         quietUnlock = Task {
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled else { return }
-            let result = await Self.derive(target, secret: form.secret)
+            let result = await Self.derive(target, masterPassword: form.masterPassword)
             guard case .success(let (user, key)) = result else { return }
             // Unlock only for what the form still holds.
-            guard !isUnlocked, !lockForm.busy, lockForm.secret == form.secret,
+            guard !isUnlocked, !lockForm.busy, lockForm.masterPassword == form.masterPassword,
                   lockForm.who == form.who, lockForm.pending?.name == form.pending?.name
             else {
                 key.wipe()
@@ -230,19 +243,20 @@ final class AppModel {
         }
     }
 
-    /// Derives the user's key from the secret, off the main thread: scrypt
-    /// takes a moment. It fails if the secret does not match their key ID.
-    private static func derive(_ user: User, secret: String) async -> Result<(User, Key), any Error> {
+    /// Derives the user's key from the master password, off the main thread:
+    /// scrypt takes a moment. It fails if the master password does not match
+    /// their key ID.
+    private static func derive(_ user: User, masterPassword: String) async -> Result<(User, Key), any Error> {
         await Task.detached(priority: .userInitiated) {
             Result { () throws -> (User, Key) in
                 var user = user
-                let key = try user.unlock(secret: secret)
+                let key = try user.unlock(secret: masterPassword)
                 return (user, key)
             }
         }.value
     }
 
-    /// Opens the sites of a user whose secret matched, keeping a new user
+    /// Opens the sites of a user whose master password matched, keeping a new user
     /// or an import first.
     private func unlocked(_ unlocked: User, key: Key, creating: Bool) {
         var user = unlocked
@@ -262,6 +276,7 @@ final class AppModel {
         self.user = user
         self.key = key
         save()
+        loadSecrets()
         settings.lastUser = user.name
         lockForm.pending = nil
         lockForm.pendingFile = ""
@@ -282,24 +297,30 @@ final class AppModel {
         return sites(matching: query, of: user)
     }
 
-    /// The user's sites that a query finds: those whose names start with
+    /// The user's sites that a query finds.
+    func sites(matching query: String, of user: User) -> [Site] {
+        Self.search(user.sites, for: query, name: \.name, lastUsed: \.lastUsed)
+    }
+
+    /// What a query finds of named things: those whose names start with
     /// it, then those holding it, then those holding its letters in order,
     /// each the most recently used first.
-    func sites(matching query: String, of user: User) -> [Site] {
+    static func search<Item>(_ items: [Item], for query: String, name: (Item) -> String,
+                             lastUsed: (Item) -> Date?) -> [Item] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        return user.sites
-            .compactMap { site -> (Site, Int)? in
-                let name = site.name.lowercased()
-                if q.isEmpty || name.hasPrefix(q) || name.trimmingPrefix("www.").hasPrefix(q) { return (site, 0) }
-                if name.contains(q) { return (site, 1) }
-                if name.containsInOrder(q) { return (site, 2) }
+        return items
+            .compactMap { item -> (Item, Int)? in
+                let name = name(item).lowercased()
+                if q.isEmpty || name.hasPrefix(q) || name.trimmingPrefix("www.").hasPrefix(q) { return (item, 0) }
+                if name.contains(q) { return (item, 1) }
+                if name.containsInOrder(q) { return (item, 2) }
                 return nil
             }
             .sorted { a, b in
                 if a.1 != b.1 { return a.1 < b.1 }
-                let (x, y) = (a.0.lastUsed ?? .distantPast, b.0.lastUsed ?? .distantPast)
+                let (x, y) = (lastUsed(a.0) ?? .distantPast, lastUsed(b.0) ?? .distantPast)
                 if x != y { return x > y }
-                return a.0.name < b.0.name
+                return name(a.0) < name(b.0)
             }
             .map(\.0)
     }
@@ -448,7 +469,7 @@ final class AppModel {
     }
 
     /// Reads a Spectre export, then opens the panel to ask for its user's
-    /// secret, which checks the file and encrypts any password it holds in
+    /// master password, which checks the file and encrypts any password it holds in
     /// the clear.
     func importFile(at file: URL) {
         do {
@@ -485,7 +506,7 @@ final class AppModel {
         }
     }
 
-    private func alert(_ title: String, _ message: String) {
+    func alert(_ title: String, _ message: String) {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message

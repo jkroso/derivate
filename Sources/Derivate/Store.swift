@@ -45,8 +45,9 @@ extension Settings: Codable {
 }
 
 /// The app's files: each user is a Spectre export, users/<name>.mpjson,
-/// with stored passwords encrypted, as Spectre keeps them. No secret or
-/// key is ever written.
+/// with stored passwords encrypted, as Spectre keeps them. Their secrets
+/// are in secrets/<name>.secrets, encrypted with their key. No master
+/// password or key is ever written.
 struct Store {
     let folder: URL
 
@@ -71,6 +72,7 @@ struct Store {
     }
 
     private var usersFolder: URL { folder.appending(path: "users", directoryHint: .isDirectory) }
+    private var secretsFolder: URL { folder.appending(path: "secrets", directoryHint: .isDirectory) }
     private var settingsFile: URL { folder.appending(path: "settings.json") }
 
     func loadSettings() -> Settings {
@@ -105,18 +107,57 @@ struct Store {
         try write(user.exportData(), to: file(of: user))
     }
 
+    /// Deletes the user's file and their secrets.
     func delete(_ user: User) throws {
-        do {
-            try FileManager.default.removeItem(at: file(of: user))
-        } catch CocoaError.fileNoSuchFile {
+        for url in [file(of: user), secretsFile(of: user)] {
+            do {
+                try FileManager.default.removeItem(at: url)
+            } catch CocoaError.fileNoSuchFile {
+            }
         }
     }
 
-    /// The user's file name: their name, without the characters file
-    /// systems refuse.
     func file(of user: User) -> URL {
-        let name = String(user.name.map { #"/\:*?"<>|"#.contains($0) || $0.isControl ? "_" : $0 })
-        return usersFolder.appending(path: name + ".mpjson")
+        usersFolder.appending(path: fileName(of: user) + ".mpjson")
+    }
+
+    /// The user's name, without the characters file systems refuse.
+    private func fileName(of user: User) -> String {
+        String(user.name.map { #"/\:*?"<>|"#.contains($0) || $0.isControl ? "_" : $0 })
+    }
+
+    // MARK: Secrets
+
+    /// What starts a secrets file. The rest is the secrets as JSON, sealed
+    /// with the user's key, which checks this line too.
+    private static let secretsHeader = Data("Derivate secrets 1\n".utf8)
+
+    private struct SecretsFile: Codable {
+        var secrets: [Secret]
+    }
+
+    func secretsFile(of user: User) -> URL {
+        secretsFolder.appending(path: fileName(of: user) + ".secrets")
+    }
+
+    /// The user's secrets, which their key decrypts: none if they have no
+    /// file yet.
+    func loadSecrets(of user: User, key: Key) throws -> [Secret] {
+        let file = secretsFile(of: user)
+        guard FileManager.default.fileExists(atPath: file.path) else { return [] }
+        let data = try Data(contentsOf: file)
+        guard data.starts(with: Self.secretsHeader) else { throw SpectreError.undecryptable }
+        let plain = try key.open(Data(data.dropFirst(Self.secretsHeader.count)), context: Self.secretsHeader)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(SecretsFile.self, from: plain).secrets
+    }
+
+    func save(_ secrets: [Secret], of user: User, key: Key) throws {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let plain = try encoder.encode(SecretsFile(secrets: secrets))
+        try write(Self.secretsHeader + key.seal(plain, context: Self.secretsHeader), to: secretsFile(of: user))
     }
 
     /// Replaces a file at once, readable by the user alone.

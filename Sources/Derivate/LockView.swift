@@ -6,7 +6,7 @@ struct LockView: View {
     @Environment(AppModel.self) private var model
     @FocusState private var focus: Field?
 
-    private enum Field { case name, secret, again }
+    private enum Field { case name, masterPassword, again }
 
     var body: some View {
         @Bindable var model = model
@@ -38,9 +38,9 @@ struct LockView: View {
                                     selection: $model.lockForm.who)
                             .onChange(of: form.who) {
                                 model.lockForm.error = nil
-                                model.lockForm.secret = ""
+                                model.lockForm.masterPassword = ""
                                 model.lockForm.confirm = ""
-                                focus = model.lockForm.isCreating ? .name : .secret
+                                focus = model.lockForm.isCreating ? .name : .masterPassword
                             }
                         }
                     }
@@ -52,18 +52,18 @@ struct LockView: View {
                                 .inputStyle(focused: focus == .name)
                         }
                     }
-                    FieldRow(label: "Secret", description: hint) {
-                        SecureField("Secret", text: $model.lockForm.secret, prompt: placeholder("Secret"))
+                    FieldRow(label: "Master password", description: hint) {
+                        SecureField("Master password", text: $model.lockForm.masterPassword, prompt: placeholder("Master password"))
                             .labelsHidden()
-                            .focused($focus, equals: .secret)
-                            .inputStyle(focused: focus == .secret)
-                            .onChange(of: form.secret) { model.secretChanged() }
+                            .focused($focus, equals: .masterPassword)
+                            .inputStyle(focused: focus == .masterPassword)
+                            .onChange(of: form.masterPassword) { model.masterPasswordChanged() }
                             .disabled(form.busy)
                             .onSubmit(model.unlock)
                     }
                     if form.isCreating {
                         FieldRow(label: "Again") {
-                            SecureField("Again", text: $model.lockForm.confirm, prompt: placeholder("The same secret"))
+                            SecureField("Again", text: $model.lockForm.confirm, prompt: placeholder("The same master password"))
                                 .labelsHidden()
                                 .focused($focus, equals: .again)
                                 .inputStyle(focused: focus == .again)
@@ -113,18 +113,18 @@ struct LockView: View {
         .onChange(of: model.opened, focusFirst)
         .onChange(of: form.error) {
             if form.error != nil && !form.isCreating {
-                focus = .secret
+                focus = .masterPassword
             }
         }
     }
 
     private func focusFirst() {
-        focus = model.lockForm.isCreating ? .name : .secret
+        focus = model.lockForm.isCreating ? .name : .masterPassword
     }
 
-    /// The button that submits the form, where typing the secret does not
-    /// unlock by itself: a new user, and an export with no key ID to check
-    /// the secret against. Enter submits it too.
+    /// The button that submits the form, where typing the master password
+    /// does not unlock by itself: a new user, and an export with no key ID
+    /// to check it against. Enter submits it too.
     private var submitTitle: String? {
         let form = model.lockForm
         if form.isCreating {
@@ -142,18 +142,18 @@ struct LockView: View {
             return "Importing \(pending.sites.count.counted("site")) from \(form.pendingFile)."
         }
         if form.isCreating && model.users.isEmpty {
-            return "Your name and secret make your passwords, as in Spectre."
+            return "Your name and master password make your passwords, as in Spectre."
         }
-        return "Type your secret to see your passwords."
+        return "Type your master password to see your passwords."
     }
 
     private var hint: String? {
         let form = model.lockForm
         if let pending = form.pending {
             return pending.keyID == nil
-                ? "This export cannot check the secret: type it with care."
-                : "The secret you use in Spectre. Derivate checks it against the export."
+                ? "This export cannot check the master password: type it with care."
+                : "The master password you use in Spectre, which Spectre calls your secret. Derivate checks it against the export."
         }
-        return form.isCreating ? "Type it twice. The same name and secret give the same passwords on every device." : nil
+        return form.isCreating ? "Type it twice. The same name and master password give the same passwords on every device." : nil
     }
 }

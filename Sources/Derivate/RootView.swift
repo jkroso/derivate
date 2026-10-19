@@ -2,7 +2,7 @@ import DerivateKit
 import SwiftUI
 
 /// The panel: the lock screen until the user unlocks, then their sites, a
-/// site's details or the settings.
+/// site's details, their secrets, a secret's details or the settings.
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @State private var dropping = false
@@ -35,10 +35,10 @@ struct RootView: View {
                 .strokeBorder(dropping ? Color.accentColor : Color.hairline, lineWidth: dropping ? 2 : 1)
         }
         // A Spectre export dropped on the panel imports, as the menu's
-        // Import does.
+        // Import does. On the secrets, a file dropped is a secret's.
         .dropDestination(for: URL.self) { files, _ in
             guard let file = files.first else { return false }
-            model.importFile(at: file)
+            model.dropped(file)
             return true
         } isTargeted: { dropping = $0 }
         .animation(.easeOut(duration: 0.2), value: model.toast)
@@ -62,6 +62,10 @@ struct RootView: View {
             LockView()
         } else if case .site(let name) = model.screen, let site = model.site(named: name) {
             SiteView(site: site)
+        } else if model.screen == .secrets {
+            SecretsView()
+        } else if case .secret(let name) = model.screen {
+            SecretView(secret: model.secret(named: name) ?? Secret(name: name))
         } else {
             SitesView()
         }

@@ -96,7 +96,7 @@ struct SettingsView: View {
             if forgetting, let user = model.user {
                 Confirmation(
                     title: "Forget \(user.name)?",
-                    message: "Derivate deletes their sites from this Mac. Their passwords come back with their name and secret, but counters, types, login names and stored passwords do not, unless you export them first.",
+                    message: "Derivate deletes their sites and secrets from this Mac. Their passwords come back with their name and secret. Counters, types, login names and stored passwords do not, unless you export them first. Secrets never come back.",
                     action: "Forget", cancel: { forgetting = false }, confirm: { model.forget(user.name) })
             }
         }
