@@ -13,7 +13,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-version=1.0.0
+version=1.1.0
 app=build/Derivate.app
 
 arch="--arch arm64 --arch x86_64"
