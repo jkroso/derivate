@@ -99,6 +99,11 @@ final class AppModel {
     @ObservationIgnored var allowedAgents: Set<PeerProcess.ID> = []
     /// How long a request waits for the user.
     @ObservationIgnored var agentTimeout = Duration.seconds(120)
+    /// When Derivate unlocked last. For a moment after it, Enter does not
+    /// copy: the user can press it for the master password just after
+    /// Derivate unlocked without it.
+    @ObservationIgnored var unlockedAt: ContinuousClock.Instant?
+    @ObservationIgnored var enterPause = Duration.seconds(1)
 
     /// The settings record the next keys pressed as the shortcut.
     private(set) var recording = false
@@ -285,6 +290,7 @@ final class AppModel {
         query = ""
         selection = 0
         opened += 1
+        unlockedAt = .now
         focusTopField()
         agentsUnlocked()
     }

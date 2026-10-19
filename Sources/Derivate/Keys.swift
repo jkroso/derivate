@@ -38,7 +38,8 @@ extension AppModel {
     /// Handles a key pressed in the panel, and reports whether it did:
     ///
     ///   - ↑ and ↓ choose a site. Enter copies its password, Shift+Enter
-    ///     the login name the user set for it.
+    ///     the login name the user set for it. For a moment after Derivate
+    ///     unlocks, Enter does nothing.
     ///   - ⌘Enter saves the name typed as a new site and copies its
     ///     password, even when other sites match it.
     ///   - ⌘E opens its details, ⌘S the secrets, ⌘L locks, ⌘, opens the
@@ -88,6 +89,8 @@ extension AppModel {
             return true
         }
         switch (key, modifiers) {
+        case _ where enter && justUnlocked:
+            break // meant for the master password
         case (kVK_DownArrow, []):
             selection = min(selection + 1, max(choices - 1, 0))
         case (kVK_UpArrow, []):
@@ -117,6 +120,11 @@ extension AppModel {
             return false
         }
         return true
+    }
+
+    /// Whether Derivate unlocked a moment ago.
+    private var justUnlocked: Bool {
+        unlockedAt.map { ContinuousClock.now - $0 < enterPause } ?? false
     }
 
     private func handleSecretsKey(_ key: Int, _ modifiers: NSEvent.ModifierFlags, enter: Bool) -> Bool {

@@ -23,6 +23,7 @@ private final class Harness {
         model = AppModel(store: Store(folder: folder))
         model.clipboard = { [unowned self] in copied.append($0) }
         model.closePanel = { [unowned self] in closed += 1 }
+        model.enterPause = .zero
         model.prepare()
     }
 
@@ -233,6 +234,32 @@ struct AppTests {
         try await Task.sleep(for: .seconds(1))
         #expect(!model.isUnlocked)
         #expect(model.users.count == 1)
+    }
+
+    /// Enter pressed for the master password, just after Derivate unlocked
+    /// without it, does not copy the first site's password.
+    @Test func enterJustAfterUnlocking() async throws {
+        let h = Harness()
+        let model = h.model
+        await h.createRobert()
+        model.query = "github.com"
+        h.press(kVK_Return)
+        model.lock()
+        model.enterPause = .milliseconds(500)
+
+        model.lockForm.masterPassword = banana
+        model.masterPasswordChanged()
+        for _ in 0..<200 where !model.isUnlocked {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(model.isUnlocked)
+        #expect(h.press(kVK_Return))
+        #expect(h.copied.count == 1)
+        #expect(h.closed == 1)
+
+        try await Task.sleep(for: .milliseconds(600))
+        h.press(kVK_Return)
+        #expect(h.copied.count == 2)
     }
 
     /// The panel is as tall as the lock screen's fields, and takes its full
